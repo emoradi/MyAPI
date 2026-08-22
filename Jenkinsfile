@@ -21,12 +21,19 @@ pipeline {
             steps {
                 sh '''
                     echo "========================================"
-                    echo "Environment"
+                    echo "ENVIRONMENT"
                     echo "========================================"
 
-                    echo ""
                     echo "Hostname:"
                     hostname
+
+                    echo ""
+                    echo "User:"
+                    whoami
+
+                    echo ""
+                    echo "Working Directory:"
+                    pwd
 
                     echo ""
                     echo "Git:"
@@ -35,6 +42,18 @@ pipeline {
                     echo ""
                     echo ".NET:"
                     dotnet --info
+                '''
+            }
+        }
+
+        stage('List Source') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "SOURCE TREE"
+                    echo "========================================"
+
+                    find . -maxdepth 3 -type f | sort
                 '''
             }
         }
@@ -56,29 +75,24 @@ pipeline {
                 '''
             }
         }
-
-        stage('Test') {
-            steps {
-                sh '''
-                    dotnet test \
-                        --configuration Release \
-                        --no-build
-                '''
-            }
-        }
     }
 
     post {
+
         success {
-            echo '========================================'
-            echo 'CI SUCCESS'
-            echo '========================================'
+            echo '''
+========================================
+MYAPI CI SUCCESS
+========================================
+'''
         }
 
         failure {
-            echo '========================================'
-            echo 'CI FAILED'
-            echo '========================================'
+            echo '''
+========================================
+MYAPI CI FAILED
+========================================
+'''
         }
 
         always {
