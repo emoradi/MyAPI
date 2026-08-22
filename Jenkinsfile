@@ -4,6 +4,11 @@ pipeline {
         label 'myapi-dotnet9'
     }
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     stages {
 
         stage('Checkout') {
@@ -15,41 +20,69 @@ pipeline {
         stage('Environment') {
             steps {
                 sh '''
-                    echo "=== HOSTNAME ==="
+                    echo "========================================"
+                    echo "Environment"
+                    echo "========================================"
+
+                    echo ""
+                    echo "Hostname:"
                     hostname
 
-                    echo "=== GIT ==="
+                    echo ""
+                    echo "Git:"
                     git --version
 
-                    echo "=== DOTNET ==="
+                    echo ""
+                    echo ".NET:"
                     dotnet --info
-
-                    echo "=== JAVA ==="
-                    java -version
                 '''
             }
         }
 
         stage('Restore') {
             steps {
-                dir('src/WebApplication1') {
-                    sh '''
-                        dotnet restore WebApplication1.csproj
-                    '''
-                }
+                sh '''
+                    dotnet restore
+                '''
             }
         }
 
         stage('Build') {
             steps {
-                dir('src/WebApplication1') {
-                    sh '''
-                        dotnet build WebApplication1.csproj \
-                            --configuration Release \
-                            --no-restore
-                    '''
-                }
+                sh '''
+                    dotnet build \
+                        --configuration Release \
+                        --no-restore
+                '''
             }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    dotnet test \
+                        --configuration Release \
+                        --no-build
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '========================================'
+            echo 'CI SUCCESS'
+            echo '========================================'
+        }
+
+        failure {
+            echo '========================================'
+            echo 'CI FAILED'
+            echo '========================================'
+        }
+
+        always {
+            cleanWs()
         }
     }
 }
