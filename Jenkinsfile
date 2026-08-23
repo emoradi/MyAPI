@@ -7,6 +7,12 @@ pipeline {
     options {
         timestamps()
         disableConcurrentBuilds()
+        skipDefaultCheckout()
+    }
+
+    environment {
+        PROJECT_NAME = 'myapi'
+        PROJECT_PATH = 'src/WebApplication1'
     }
 
     stages {
@@ -17,61 +23,87 @@ pipeline {
             }
         }
 
-        stage('Environment') {
-            steps {
-                sh '''
-                    echo "========================================"
-                    echo "ENVIRONMENT"
-                    echo "========================================"
-
-                    echo "Hostname:"
-                    hostname
-
-                    echo ""
-                    echo "User:"
-                    whoami
-
-                    echo ""
-                    echo "Working Directory:"
-                    pwd
-
-                    echo ""
-                    echo "Git:"
-                    git --version
-
-                    echo ""
-                    echo ".NET:"
-                    dotnet --info
-                '''
-            }
-        }
-
-        stage('List Source') {
-            steps {
-                sh '''
-                    echo "========================================"
-                    echo "SOURCE TREE"
-                    echo "========================================"
-
-                    find . -maxdepth 3 -type f | sort
-                '''
-            }
-        }
-
-        stage('Restore') {
-            steps {
-                sh '''
-                    dotnet restore
-                '''
-            }
-        }
-
         stage('Build') {
             steps {
                 sh '''
-                    dotnet build \
+                    echo "========================================"
+                    echo "BUILD"
+                    echo "========================================"
+
+                    dotnet restore MyAPI.slnx
+
+                    dotnet build MyAPI.slnx \
                         --configuration Release \
                         --no-restore
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "TEST"
+                    echo "========================================"
+
+                    dotnet test MyAPI.slnx \
+                        --configuration Release \
+                        --no-build
+                '''
+            }
+        }
+
+        stage('Develop -> Stage') {
+
+            when {
+                branch 'develop'
+            }
+
+            steps {
+
+                script {
+
+                    def imageVersion =
+                        "${PROJECT_NAME}:develop-${BUILD_NUMBER}"
+
+                    sh """
+                        echo "========================================"
+                        echo "DOCKER BUILD - DEVELOP"
+                        echo "========================================"
+
+                        docker build \
+                            -t ${imageVersion} \
+                            -t ${PROJECT_NAME}:stage \
+                            -f ${PROJECT_PATH}/Dockerfile \
+                            ${PROJECT_PATH}
+                    """
+
+                }
+            }
+        }
+
+        stage('Verify Docker Image') {
+
+            when {
+                branch 'develop'
+            }
+
+            steps {
+
+                sh '''
+                    echo "========================================"
+                    echo "DOCKER IMAGES"
+                    echo "========================================"
+
+                    docker images myapi
+
+                    echo ""
+
+                    echo "========================================"
+                    echo "VERIFY STAGE IMAGE"
+                    echo "========================================"
+
+                    docker image inspect myapi:stage
                 '''
             }
         }
@@ -82,7 +114,7 @@ pipeline {
         success {
             echo '''
 ========================================
-MYAPI CI SUCCESS
+MYAPI PIPELINE SUCCESS
 ========================================
 '''
         }
@@ -90,7 +122,7 @@ MYAPI CI SUCCESS
         failure {
             echo '''
 ========================================
-MYAPI CI FAILED
+MYAPI PIPELINE FAILED
 ========================================
 '''
         }
