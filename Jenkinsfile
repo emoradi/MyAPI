@@ -1,18 +1,16 @@
 pipeline {
-
     agent {
-        label 'myapi-dotnet9'
+        label 'dotnet'
+    }
+
+    environment {
+        IMAGE_NAME = 'myapi'
     }
 
     options {
         timestamps()
+        skipDefaultCheckout(true)
         disableConcurrentBuilds()
-        skipDefaultCheckout()
-    }
-
-    environment {
-        PROJECT_NAME = 'myapi'
-        PROJECT_PATH = 'src/WebApplication1'
     }
 
     stages {
@@ -46,71 +44,97 @@ pipeline {
                     echo "TEST"
                     echo "========================================"
 
+                    echo "---- Code Cleanup Check ----"
+
+                    dotnet format MyAPI.slnx \
+                        --verify-no-changes \
+                        --no-restore
+
+                    echo "Code cleanup check passed."
+
+                    echo "---- Unit Tests ----"
+
                     dotnet test MyAPI.slnx \
                         --configuration Release \
-                        --no-build
+                        --no-build \
+                        --logger "console;verbosity=normal"
                 '''
             }
         }
 
         stage('Develop -> Stage') {
-
             when {
                 branch 'develop'
             }
 
             steps {
-
                 script {
+                    echo "========================================"
+                    echo "DOCKER BUILD - DEVELOP"
+                    echo "========================================"
 
-                    def imageVersion =
-                        "${PROJECT_NAME}:develop-${BUILD_NUMBER}"
-
-                    sh """
-                        echo "========================================"
-                        echo "DOCKER BUILD - DEVELOP"
-                        echo "========================================"
-
+                    sh '''
                         docker build \
-                            -t ${imageVersion} \
-                            -t ${PROJECT_NAME}:stage \
-                            -f ${PROJECT_PATH}/Dockerfile \
-                            ${PROJECT_PATH}
-                    """
+                            -t ${IMAGE_NAME}:develop-${BUILD_NUMBER} \
+                            -t ${IMAGE_NAME}:stage \
+                            -f src/WebApplication1/Dockerfile \
+                            src/WebApplication1
+                    '''
+                }
+            }
+        }
 
+        stage('Master -> Production') {
+            when {
+                branch 'master'
+            }
+
+            steps {
+                script {
+                    echo "========================================"
+                    echo "DOCKER BUILD - MASTER"
+                    echo "========================================"
+
+                    sh '''
+                        docker build \
+                            -t ${IMAGE_NAME}:master-${BUILD_NUMBER} \
+                            -t ${IMAGE_NAME}:production \
+                            -f src/WebApplication1/Dockerfile \
+                            src/WebApplication1
+                    '''
                 }
             }
         }
 
         stage('Verify Docker Image') {
-
             when {
-                branch 'develop'
+                anyOf {
+                    branch 'develop'
+                    branch 'master'
+                }
             }
 
             steps {
-
                 sh '''
                     echo "========================================"
-                    echo "DOCKER IMAGES"
+                    echo "VERIFY DOCKER IMAGE"
                     echo "========================================"
 
-                    docker images myapi
+                    docker images ${IMAGE_NAME}
 
-                    echo ""
+                    if [ "${BRANCH_NAME}" = "develop" ]; then
+                        docker image inspect ${IMAGE_NAME}:stage
+                    fi
 
-                    echo "========================================"
-                    echo "VERIFY STAGE IMAGE"
-                    echo "========================================"
-
-                    docker image inspect myapi:stage
+                    if [ "${BRANCH_NAME}" = "master" ]; then
+                        docker image inspect ${IMAGE_NAME}:production
+                    fi
                 '''
             }
         }
     }
 
     post {
-
         success {
             echo '''
 ========================================
