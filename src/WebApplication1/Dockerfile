@@ -1,54 +1,99 @@
-# See https://aka.ms/customizecontainer to learn how to customize your debug container
-# and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+pipeline {
+    agent {
+        label 'dotnet'
+    }
 
-# This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+    options {
+        timestamps()
+    }
 
-USER $APP_UID
-WORKDIR /app
+    environment {
+        IMAGE_NAME = 'myapi'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
 
-EXPOSE 8080
-EXPOSE 8081
+    stages {
 
+        stage('Checkout') {
+            steps {
+                checkout scm
 
-# This stage is used to build the service project
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+                sh '''
+                    echo "Branch:"
+                    git branch --show-current
 
-ARG BUILD_CONFIGURATION=Release
+                    echo "Commit:"
+                    git rev-parse --short HEAD
 
-WORKDIR /src
+                    echo "Files:"
+                    ls -la
+                '''
+            }
+        }
 
-COPY ["WebApplication1.csproj", "./"]
+        stage('Restore') {
+            steps {
+                sh '''
+                    dotnet restore
+                '''
+            }
+        }
 
-RUN dotnet restore "./WebApplication1.csproj"
+        stage('Build') {
+            steps {
+                sh '''
+                    dotnet build \
+                        --configuration Release \
+                        --no-restore
+                '''
+            }
+        }
 
-COPY . .
+        stage('Test') {
+            steps {
+                sh '''
+                    dotnet test \
+                        --configuration Release \
+                        --no-build \
+                        --verbosity normal
+                '''
+            }
+        }
 
-WORKDIR "/src"
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build \
+                        --tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                        --tag ${IMAGE_NAME}:latest \
+                        .
+                '''
+            }
+        }
 
-RUN dotnet build "./WebApplication1.csproj" \
-    -c $BUILD_CONFIGURATION \
-    -o /app/build
+        stage('Verify Docker Image') {
+            steps {
+                sh '''
+                    docker images ${IMAGE_NAME}
+                '''
+            }
+        }
+    }
 
+    post {
+        success {
+            echo 'CI Pipeline completed successfully.'
+        }
 
-# This stage is used to publish the service project
-# to be copied to the final stage
-FROM build AS publish
+        failure {
+            echo 'CI Pipeline failed.'
+        }
 
-ARG BUILD_CONFIGURATION=Release
-
-RUN dotnet publish "./WebApplication1.csproj" \
-    -c $BUILD_CONFIGURATION \
-    -o /app/publish \
-    /p:UseAppHost=false
-
-
-# This stage is used in production
-# or when running from VS in regular mode
-FROM base AS final
-
-WORKDIR /app
-
-COPY --from=publish /app/publish .
-
-ENTRYPOINT ["dotnet", "WebApplication1.dll"]
+        always {
+            sh '''
+                echo "Docker images:"
+                docker images
+            '''
+        }
+    }
+}
