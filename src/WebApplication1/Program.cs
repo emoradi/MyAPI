@@ -7,13 +7,13 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-    app.UseSwagger();
+app.UseSwagger();
 
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "My API v1");
-        options.RoutePrefix = "swagger";
-    });
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "My API v1");
+    options.RoutePrefix = "swagger";
+});
 
 
 app.UseHttpsRedirection();
