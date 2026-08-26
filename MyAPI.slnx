@@ -2,5 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/WebApplication1/WebApplication1.csproj" />
   </Folder>
-  <Folder Name="/test/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/MyAPI.BddTests/MyAPI.BddTests.csproj" />
+  </Folder>
 </Solution>
