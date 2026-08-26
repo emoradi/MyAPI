@@ -1,16 +1,19 @@
 pipeline {
+
     agent {
         label 'dotnet'
     }
 
-    environment {
-        IMAGE_NAME = 'myapi'
-    }
-
     options {
         timestamps()
-        skipDefaultCheckout(true)
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    environment {
+        IMAGE_NAME = 'myapi'
+        TEST_CONTAINER = 'myapi-test'
+        TEST_PORT = '5000'
     }
 
     stages {
@@ -37,27 +40,107 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Code Quality') {
             steps {
                 sh '''
                     echo "========================================"
-                    echo "TEST"
+                    echo "CODE QUALITY"
                     echo "========================================"
-
-                    echo "---- Code Cleanup Check ----"
 
                     dotnet format MyAPI.slnx \
                         --verify-no-changes \
                         --no-restore
+                '''
+            }
+        }
 
-                    echo "Code cleanup check passed."
-
-                    echo "---- Unit Tests ----"
+        stage('Unit Tests') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "UNIT TESTS"
+                    echo "========================================"
 
                     dotnet test MyAPI.slnx \
                         --configuration Release \
-                        --no-build \
-                        --logger "console;verbosity=normal"
+                        --no-build
+                '''
+            }
+        }
+
+        stage('Docker Build - Test') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "DOCKER BUILD - TEST"
+                    echo "========================================"
+
+                    docker build \
+                        -t ${IMAGE_NAME}:test-${BUILD_NUMBER} \
+                        -f src/WebApplication1/Dockerfile \
+                        src/WebApplication1
+                '''
+            }
+        }
+
+        stage('Start API - Test') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "START API TEST CONTAINER"
+                    echo "========================================"
+
+                    docker rm -f ${TEST_CONTAINER} || true
+
+                    docker run -d \
+                        --name ${TEST_CONTAINER} \
+                        -p ${TEST_PORT}:8080 \
+                        ${IMAGE_NAME}:test-${BUILD_NUMBER}
+
+                    docker ps
+                '''
+            }
+        }
+
+        stage('Wait For API') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "WAIT FOR API"
+                    echo "========================================"
+
+                    for i in $(seq 1 30)
+                    do
+                        echo "Attempt $i/30..."
+
+                        if curl -fsS http://localhost:${TEST_PORT}/health
+                        then
+                            echo "API is ready."
+                            exit 0
+                        fi
+
+                        sleep 2
+                    done
+
+                    echo "API did not become ready."
+
+                    docker logs ${TEST_CONTAINER}
+
+                    exit 1
+                '''
+            }
+        }
+
+        stage('BDD Tests - Reqnroll') {
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "BDD TESTS - REQNROLL"
+                    echo "========================================"
+
+                    dotnet test \
+                        tests/MyAPI.BddTests/MyAPI.BddTests.csproj \
+                        --configuration Release
                 '''
             }
         }
@@ -68,19 +151,17 @@ pipeline {
             }
 
             steps {
-                script {
+                sh '''
                     echo "========================================"
                     echo "DOCKER BUILD - DEVELOP"
                     echo "========================================"
 
-                    sh '''
-                        docker build \
-                            -t ${IMAGE_NAME}:develop-${BUILD_NUMBER} \
-                            -t ${IMAGE_NAME}:stage \
-                            -f src/WebApplication1/Dockerfile \
-                            src/WebApplication1
-                    '''
-                }
+                    docker build \
+                        -t ${IMAGE_NAME}:develop-${BUILD_NUMBER} \
+                        -t ${IMAGE_NAME}:stage \
+                        -f src/WebApplication1/Dockerfile \
+                        src/WebApplication1
+                '''
             }
         }
 
@@ -90,51 +171,41 @@ pipeline {
             }
 
             steps {
-                script {
+                sh '''
                     echo "========================================"
                     echo "DOCKER BUILD - MASTER"
                     echo "========================================"
 
-                    sh '''
-                        docker build \
-                            -t ${IMAGE_NAME}:master-${BUILD_NUMBER} \
-                            -t ${IMAGE_NAME}:production \
-                            -f src/WebApplication1/Dockerfile \
-                            src/WebApplication1
-                    '''
-                }
-            }
-        }
-
-        stage('Verify Docker Image') {
-            when {
-                anyOf {
-                    branch 'develop'
-                    branch 'master'
-                }
-            }
-
-            steps {
-                sh '''
-                    echo "========================================"
-                    echo "VERIFY DOCKER IMAGE"
-                    echo "========================================"
-
-                    docker images ${IMAGE_NAME}
-
-                    if [ "${BRANCH_NAME}" = "develop" ]; then
-                        docker image inspect ${IMAGE_NAME}:stage
-                    fi
-
-                    if [ "${BRANCH_NAME}" = "master" ]; then
-                        docker image inspect ${IMAGE_NAME}:production
-                    fi
+                    docker build \
+                        -t ${IMAGE_NAME}:master-${BUILD_NUMBER} \
+                        -t ${IMAGE_NAME}:production \
+                        -f src/WebApplication1/Dockerfile \
+                        src/WebApplication1
                 '''
             }
         }
     }
 
     post {
+
+        always {
+            sh '''
+                echo "========================================"
+                echo "CLEANUP"
+                echo "========================================"
+
+                docker logs ${TEST_CONTAINER} || true
+
+                docker rm -f ${TEST_CONTAINER} || true
+
+                docker image rm \
+                    ${IMAGE_NAME}:test-${BUILD_NUMBER} \
+                    || true
+            '''
+
+            cleanWs()
+        }
+
         success {
             echo '''
 ========================================
@@ -149,10 +220,6 @@ MYAPI PIPELINE SUCCESS
 MYAPI PIPELINE FAILED
 ========================================
 '''
-        }
-
-        always {
-            cleanWs()
         }
     }
 }
