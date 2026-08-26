@@ -11,9 +11,10 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = 'myapi'
+        IMAGE_NAME     = 'myapi'
         TEST_CONTAINER = 'myapi-test'
-        TEST_PORT = '5000'
+        TEST_NETWORK   = 'jenkins-network'
+        TEST_PORT      = '8080'
     }
 
     stages {
@@ -85,7 +86,7 @@ pipeline {
         }
 
         // =========================================================
-        // DOCKER BUILD FOR TEST
+        // DOCKER BUILD
         // =========================================================
 
         stage('Docker Build - Test') {
@@ -118,14 +119,10 @@ pipeline {
 
                     docker run -d \
                         --name ${TEST_CONTAINER} \
-                        -p ${TEST_PORT}:8080 \
+                        --network ${TEST_NETWORK} \
                         ${IMAGE_NAME}:test-${BUILD_NUMBER}
 
-                    echo "Waiting for container..."
-
-                    sleep 5
-
-                    echo "========== CONTAINER STATUS =========="
+                    echo "Container started."
 
                     docker ps -a
 
@@ -151,8 +148,9 @@ pipeline {
                     do
                         echo "Attempt $i/30..."
 
-                        if curl -fsS http://localhost:${TEST_PORT}/health
+                        if curl -fsS http://${TEST_CONTAINER}:8080/health
                         then
+                            echo ""
                             echo "API is ready."
                             exit 0
                         fi
@@ -205,6 +203,7 @@ pipeline {
         // =========================================================
 
         stage('Develop -> Stage') {
+
             when {
                 branch 'develop'
             }
@@ -229,6 +228,7 @@ pipeline {
         // =========================================================
 
         stage('Master -> Production') {
+
             when {
                 branch 'master'
             }
@@ -262,7 +262,7 @@ pipeline {
                 echo "CLEANUP"
                 echo "========================================"
 
-                echo "Container logs before cleanup:"
+                echo "========== CONTAINER LOGS =========="
 
                 docker logs ${TEST_CONTAINER} || true
 
