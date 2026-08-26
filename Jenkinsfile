@@ -18,11 +18,19 @@ pipeline {
 
     stages {
 
+        // =========================================================
+        // CHECKOUT
+        // =========================================================
+
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
+
+        // =========================================================
+        // BUILD
+        // =========================================================
 
         stage('Build') {
             steps {
@@ -40,6 +48,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // CODE QUALITY
+        // =========================================================
+
         stage('Code Quality') {
             steps {
                 sh '''
@@ -54,6 +66,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // UNIT TEST
+        // =========================================================
+
         stage('Unit Tests') {
             steps {
                 sh '''
@@ -67,6 +83,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================================================
+        // DOCKER BUILD FOR TEST
+        // =========================================================
 
         stage('Docker Build - Test') {
             steps {
@@ -83,6 +103,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // START API CONTAINER
+        // =========================================================
+
         stage('Start API - Test') {
             steps {
                 sh '''
@@ -97,10 +121,24 @@ pipeline {
                         -p ${TEST_PORT}:8080 \
                         ${IMAGE_NAME}:test-${BUILD_NUMBER}
 
-                    docker ps
+                    echo "Waiting for container..."
+
+                    sleep 5
+
+                    echo "========== CONTAINER STATUS =========="
+
+                    docker ps -a
+
+                    echo "========== CONTAINER LOGS =========="
+
+                    docker logs ${TEST_CONTAINER} || true
                 '''
             }
         }
+
+        // =========================================================
+        // WAIT FOR API
+        // =========================================================
 
         stage('Wait For API') {
             steps {
@@ -122,14 +160,31 @@ pipeline {
                         sleep 2
                     done
 
-                    echo "API did not become ready."
+                    echo "========================================"
+                    echo "API FAILED TO START"
+                    echo "========================================"
 
-                    docker logs ${TEST_CONTAINER}
+                    echo "========== DOCKER PS =========="
+
+                    docker ps -a
+
+                    echo "========== CONTAINER LOGS =========="
+
+                    docker logs ${TEST_CONTAINER} || true
+
+                    echo "========== CONTAINER INSPECT =========="
+
+                    docker inspect ${TEST_CONTAINER} \
+                        --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}}'
 
                     exit 1
                 '''
             }
         }
+
+        // =========================================================
+        // BDD / REQNROLL
+        // =========================================================
 
         stage('BDD Tests - Reqnroll') {
             steps {
@@ -144,6 +199,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================================================
+        // DEVELOP -> STAGE
+        // =========================================================
 
         stage('Develop -> Stage') {
             when {
@@ -164,6 +223,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================================================
+        // MASTER -> PRODUCTION
+        // =========================================================
 
         stage('Master -> Production') {
             when {
@@ -186,17 +249,28 @@ pipeline {
         }
     }
 
+    // =============================================================
+    // POST
+    // =============================================================
+
     post {
 
         always {
+
             sh '''
                 echo "========================================"
                 echo "CLEANUP"
                 echo "========================================"
 
+                echo "Container logs before cleanup:"
+
                 docker logs ${TEST_CONTAINER} || true
 
+                echo "Removing test container..."
+
                 docker rm -f ${TEST_CONTAINER} || true
+
+                echo "Removing test image..."
 
                 docker image rm \
                     ${IMAGE_NAME}:test-${BUILD_NUMBER} \
