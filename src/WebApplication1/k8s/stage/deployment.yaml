@@ -28,7 +28,7 @@ spec:
       containers:
         - name: myapi
 
-          image: myapi:stage
+          image: myapi:master-35
 
           imagePullPolicy: IfNotPresent
 
