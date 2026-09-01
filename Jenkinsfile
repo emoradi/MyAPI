@@ -11,18 +11,27 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = 'myapi'
+        IMAGE_NAME     = 'myapi'
         TEST_CONTAINER = 'myapi-test'
-        TEST_PORT = '5000'
+        TEST_NETWORK   = 'jenkins-network'
+        TEST_PORT      = '8080'
     }
 
     stages {
+
+        // =========================================================
+        // CHECKOUT
+        // =========================================================
 
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
+
+        // =========================================================
+        // BUILD
+        // =========================================================
 
         stage('Build') {
             steps {
@@ -40,6 +49,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // CODE QUALITY
+        // =========================================================
+
         stage('Code Quality') {
             steps {
                 sh '''
@@ -54,6 +67,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // UNIT TEST
+        // =========================================================
+
         stage('Unit Tests') {
             steps {
                 sh '''
@@ -67,6 +84,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================================================
+        // DOCKER BUILD
+        // =========================================================
 
         stage('Docker Build - Test') {
             steps {
@@ -83,6 +104,10 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // START API CONTAINER
+        // =========================================================
+
         stage('Start API - Test') {
             steps {
                 sh '''
@@ -94,13 +119,23 @@ pipeline {
 
                     docker run -d \
                         --name ${TEST_CONTAINER} \
-                        -p ${TEST_PORT}:8080 \
+                        --network ${TEST_NETWORK} \
                         ${IMAGE_NAME}:test-${BUILD_NUMBER}
 
-                    docker ps
+                    echo "Container started."
+
+                    docker ps -a
+
+                    echo "========== CONTAINER LOGS =========="
+
+                    docker logs ${TEST_CONTAINER} || true
                 '''
             }
         }
+
+        // =========================================================
+        // WAIT FOR API
+        // =========================================================
 
         stage('Wait For API') {
             steps {
@@ -113,8 +148,9 @@ pipeline {
                     do
                         echo "Attempt $i/30..."
 
-                        if curl -fsS http://localhost:${TEST_PORT}/health
+                        if curl -fsS http://${TEST_CONTAINER}:8080/health
                         then
+                            echo ""
                             echo "API is ready."
                             exit 0
                         fi
@@ -122,14 +158,31 @@ pipeline {
                         sleep 2
                     done
 
-                    echo "API did not become ready."
+                    echo "========================================"
+                    echo "API FAILED TO START"
+                    echo "========================================"
 
-                    docker logs ${TEST_CONTAINER}
+                    echo "========== DOCKER PS =========="
+
+                    docker ps -a
+
+                    echo "========== CONTAINER LOGS =========="
+
+                    docker logs ${TEST_CONTAINER} || true
+
+                    echo "========== CONTAINER INSPECT =========="
+
+                    docker inspect ${TEST_CONTAINER} \
+                        --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}}'
 
                     exit 1
                 '''
             }
         }
+
+        // =========================================================
+        // BDD / REQNROLL
+        // =========================================================
 
         stage('BDD Tests - Reqnroll') {
             steps {
@@ -145,7 +198,12 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // DEVELOP -> STAGE
+        // =========================================================
+
         stage('Develop -> Stage') {
+
             when {
                 branch 'develop'
             }
@@ -165,7 +223,12 @@ pipeline {
             }
         }
 
+        // =========================================================
+        // MASTER -> PRODUCTION
+        // =========================================================
+
         stage('Master -> Production') {
+
             when {
                 branch 'master'
             }
@@ -186,17 +249,28 @@ pipeline {
         }
     }
 
+    // =============================================================
+    // POST
+    // =============================================================
+
     post {
 
         always {
+
             sh '''
                 echo "========================================"
                 echo "CLEANUP"
                 echo "========================================"
 
+                echo "========== CONTAINER LOGS =========="
+
                 docker logs ${TEST_CONTAINER} || true
 
+                echo "Removing test container..."
+
                 docker rm -f ${TEST_CONTAINER} || true
+
+                echo "Removing test image..."
 
                 docker image rm \
                     ${IMAGE_NAME}:test-${BUILD_NUMBER} \
@@ -223,3 +297,4 @@ MYAPI PIPELINE FAILED
         }
     }
 }
+
