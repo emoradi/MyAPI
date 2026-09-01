@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapi-stage-config
+  namespace: myapi-stage
+
+data:
+  ConnectionStrings__DefaultConnection: "Server=host.docker.internal,1433;Database=DemoDB;User Id=sa;Password=Password123!;TrustServerCertificate=True;"

@@ -15,4 +15,9 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="k8s\prod\" />
+    <Folder Include="k8s\stage\" />
+  </ItemGroup>
+
 </Project>
