@@ -6,8 +6,6 @@ namespace WebApplication1.Controllers
     [Route("[controller]")]
     public class VersionController : ControllerBase
     {
-        
-
         [HttpGet(Name = "GetVersion")]
         public string Get()
         {
