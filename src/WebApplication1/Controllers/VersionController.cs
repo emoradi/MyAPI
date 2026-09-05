@@ -1,15 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace WebApplication1.Controllers
+[ApiController]
+[Route("api/version")]
+public class VersionController : ControllerBase
 {
-    [ApiController]
-    [Route("[controller]")]
-    public class VersionController : ControllerBase
+    [HttpGet]
+    public IActionResult Get()
     {
-        [HttpGet(Name = "GetVersion")]
-        public string Get()
+        return Ok(new
         {
-            return "34";
-        }
+            version = Environment.GetEnvironmentVariable("APP_VERSION"),
+            pod = Environment.GetEnvironmentVariable("HOSTNAME")
+        });
     }
 }
